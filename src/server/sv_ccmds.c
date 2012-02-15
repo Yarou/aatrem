@@ -60,7 +60,7 @@ static client_t *SV_GetPlayerByHandle( void ) {
 
 	// Check whether this is a numeric player handle
 	for(i = 0; s[i] >= '0' && s[i] <= '9'; i++);
-	
+
 	if(!s[i])
 	{
 		int plid = atoi(s);
@@ -69,7 +69,7 @@ static client_t *SV_GetPlayerByHandle( void ) {
 		if(plid >= 0 && plid < sv_maxclients->integer)
 		{
 			cl = &svs.clients[plid];
-			
+
 			if(cl->state)
 				return cl;
 		}
@@ -262,7 +262,7 @@ static void SV_MapRestart_f( void ) {
 	// map_restart has happened
 	svs.snapFlagServerBit ^= SNAPFLAG_SERVERCOUNT;
 
-	// generate a new serverid	
+	// generate a new serverid
 	// TTimo - don't update restartedserverId there, otherwise we won't deal correctly with multiple map_restart
 	sv.serverId = com_frameTime;
 	Cvar_Set( "sv_serverid", va("%i", sv.serverId ) );
@@ -311,7 +311,7 @@ static void SV_MapRestart_f( void ) {
 		client->state = CS_ACTIVE;
 
 		SV_ClientEnterWorld( client, &client->lastUsercmd );
-	}	
+	}
 
 	// run another frame to allow things to look at all the players
 	VM_Call (gvm, GAME_RUN_FRAME, sv.time);
@@ -473,7 +473,7 @@ static void SV_Status_f( void ) {
 		l = 22 - strlen(s);
 		for (j=0 ; j<l ; j++)
 			Com_Printf (" ");
-		
+
 		Com_Printf ("%5i", cl->netchan.qport);
 
 		Com_Printf (" %5i", cl->rate);
@@ -599,6 +599,98 @@ static void SV_KillServer_f( void ) {
 
 /*
 ==================
+SV_SendClientCommand_f
+
+Send a reliable command to a specific client.
+==================
+*/
+static void SV_SendClientCommand_f(void) {
+	client_t	*cl;
+	char		*cmd;
+
+	// Make sure server is running.
+	if (!com_sv_running->integer) {
+		Com_Printf("Server is not running.\n");
+		return;
+	}
+
+	if (Cmd_Argc() < 3 || strlen(Cmd_Argv(2)) == 0) {
+		Com_Printf("Usage: sendclientcommand <player name> <command>\nPlayer may be 'all'\n");
+		return;
+	}
+
+	cl = SV_GetPlayerByHandle();
+	cmd = Cmd_ArgsFromRaw(2);
+
+	if (!cl) {
+		if (!Q_stricmp(Cmd_Argv(1), "all")) {
+			SV_SendServerCommand(NULL, "%s", cmd);
+		}
+		return;
+	}
+
+	SV_SendServerCommand(cl, "%s", cmd);
+}
+
+
+/*
+==================
+SV_Incognito_f
+
+Pretend that you disconnect, but really go to spec.
+==================
+*/
+static void SV_Incognito_f(void) {
+	client_t	*cl;
+	int		i;
+	char		cmd[64];
+
+	// Make sure server is running.
+	if (!com_sv_running->integer) {
+		Com_Printf("Server is not running.\n");
+		return;
+	}
+
+	if (!in_redirect) {
+		Com_Printf("The incognito command can only be run through rcon\n");
+		return;
+	}
+
+	if (Cmd_Argc() != 1) {
+		Com_Printf("No arguments expected for incognito command\n");
+		return;
+	}
+
+	// Find the person connected to server who issued the incognito command.
+	for (i = 0, cl = svs.clients;; i++, cl++) {
+		if (i == sv_maxclients->integer) {
+			cl = NULL;
+			break;
+		}
+		if (cl->state >= CS_ACTIVE && NET_CompareAdr(cl->netchan.remoteAddress, svs.redirectAddress)) {
+			break; // found
+		}
+	}
+
+	if (cl != NULL) {
+		sv.incognitoJoinSpec = qtrue;
+		Q_snprintf(cmd, sizeof(cmd), "forceteam %i spectator\n", i);
+		Cmd_ExecuteString(cmd);
+		sv.incognitoJoinSpec = qfalse;
+		SV_SendServerCommand(NULL, "print \"%s" S_COLOR_WHITE " disconnected\n\"", cl->name); // color OK
+		Q_snprintf(cmd, sizeof(cmd), "sendclientcommand all cs %i \"\"\n", 548 + i);
+		Cmd_ExecuteString(cmd);
+	}
+	else {
+		Com_Printf("Must be connected to server for incognito to work\n");
+	}
+
+}
+
+//===========================================================
+
+/*
+==================
 SV_AddOperatorCommands
 ==================
 */
@@ -623,6 +715,8 @@ void SV_AddOperatorCommands( void ) {
 	Cmd_AddCommand ("map", SV_Map_f);
 	Cmd_AddCommand ("devmap", SV_Map_f);
 	Cmd_AddCommand ("killserver", SV_KillServer_f);
+	Cmd_AddCommand ("sendclientcommand", SV_SendClientCommand_f);
+	Cmd_AddCommand ("incognito", SV_Incognito_f);
 	if( com_dedicated->integer ) {
 		Cmd_AddCommand ("say", SV_ConSay_f);
 	}

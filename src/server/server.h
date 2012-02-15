@@ -92,6 +92,7 @@ typedef struct {
 
 	int				restartTime;
 	int				time;
+	qboolean		incognitoJoinSpec;
 } server_t;
 
 

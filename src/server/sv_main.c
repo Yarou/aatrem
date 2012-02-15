@@ -172,16 +172,27 @@ void QDECL SV_SendServerCommand(client_t *cl, const char *fmt, ...) {
 	byte		message[MAX_MSGLEN];
 	client_t	*client;
 	int			j;
+	int			msglen;
 
 	va_start (argptr,fmt);
 	Q_vsnprintf ((char *)message, sizeof(message), fmt,argptr);
 	va_end (argptr);
+
+	msglen = strlen((char *)message);
 
 	// Fix to http://aluigi.altervista.org/adv/q3msgboom-adv.txt
 	// The actual cause of the bug is probably further downstream
 	// and should maybe be addressed later, but this certainly
 	// fixes the problem for now
 	if ( strlen ((char *)message) > 1022 ) {
+		return;
+	}
+
+	if (sv.incognitoJoinSpec &&
+			cl == NULL &&
+			(!Q_strncmp((char *) message, "print \"", 7)) &&
+			msglen >= 27 + 7 &&
+			!strcmp("^7 joined the spectators.\n\"", ((char *) message) + msglen - 27)) {
 		return;
 	}
 
